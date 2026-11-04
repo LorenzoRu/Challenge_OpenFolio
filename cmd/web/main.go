@@ -37,6 +37,7 @@ func main() {
 	}
 
 	tmpl := template.Must(template.ParseFiles(
+		"templates/construction.html",
 		"templates/login.html",
 		"templates/signup.html",
 		"templates/admin.html",
@@ -45,6 +46,8 @@ func main() {
 	s := &server{db: db, templates: tmpl}
 
 	mux := http.NewServeMux()
+	// Page publique du site (en construction).
+	mux.HandleFunc("GET /{$}", s.handleConstruction)
 	mux.HandleFunc("GET /auth/login", s.handleLoginPage)
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
 	mux.HandleFunc("POST /auth/logout", s.handleLogout)
@@ -77,6 +80,11 @@ func (s *server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Erreur execution template %s: %v", name, err)
 	}
+}
+
+// handleConstruction affiche la page publique "site en construction".
+func (s *server) handleConstruction(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "construction.html", nil)
 }
 
 // renderLogin rend la page de login avec un eventuel message d'erreur.
