@@ -47,10 +47,14 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /auth/login", s.handleLoginPage)
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
-	mux.HandleFunc("GET /auth/signup", s.handleSignupPage)
-	mux.HandleFunc("POST /auth/signup", s.handleSignup)
 	mux.HandleFunc("POST /auth/logout", s.handleLogout)
+	// La creation de compte (signup) est protegee par le middleware d'auth.
+	mux.Handle("GET /auth/signup", s.requireAuth(http.HandlerFunc(s.handleSignupPage)))
+	mux.Handle("POST /auth/signup", s.requireAuth(http.HandlerFunc(s.handleSignup)))
 	mux.Handle("GET /admin", s.requireAuth(http.HandlerFunc(s.handleAdmin)))
+
+	// Serves static assets (design tokens, styles, fonts) from the /static/ path.
+	mux.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir("static"))))
 
 	port := "8080"
 	if p := os.Getenv("PORT"); p != "" {
@@ -142,6 +146,17 @@ func (s *server) handleSignup(w http.ResponseWriter, r *http.Request) {
 
 	if email == "" || password == "" {
 		s.render(w, r, "signup.html", map[string]any{"Error": "Email et mot de passe requis."})
+		return
+	}
+
+	// Une seule creation de compte admin est autorisee.
+	count, err := database.CountUsers(s.db)
+	if err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	if count > 0 {
+		s.render(w, r, "signup.html", map[string]any{"Error": "Un seul compte admin est autorise."})
 		return
 	}
 

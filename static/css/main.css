@@ -1,0 +1,88 @@
+* {
+	box-sizing: border-box;
+}
+
+body {
+	background-color: var(--color-obsidian-900);
+	color: var(--color-off-white-50);
+	font-family: system-ui, -apple-system, sans-serif;
+	min-height: 100vh;
+	margin: 0;
+}
+
+.container {
+	max-width: 480px;
+	margin: 0 auto;
+	padding: 2rem 1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 1.5rem;
+}
+
+h1.hero {
+	font-size: var(--font-hero-size);
+	font-weight: var(--font-hero-weight);
+	line-height: var(--font-hero-leading);
+	letter-spacing: var(--font-hero-tracking);
+	margin: 0;
+}
+
+p { margin: 0; }
+
+.error {
+	color: var(--color-solar-500);
+	font-size: var(--font-body-size);
+}
+
+/* Formulaire */
+.form {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	background-color: var(--color-obsidian-800);
+	border: 1px solid var(--color-border-subtle-500);
+	border-radius: var(--radius-md);
+	padding: 1.5rem;
+}
+
+.form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+
+label { font-size: var(--font-body-size); font-weight: var(--font-body-weight); }
+
+input {
+	width: 100%;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--color-border-subtle-500);
+	border-radius: var(--radius-md);
+	background-color: var(--color-obsidian-900);
+	color: var(--color-off-white-50);
+	font-size: var(--font-body-size);
+}
+
+/* Boutons - pill (bords arrondis) */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.75rem 1.5rem;
+	font-size: var(--font-body-size);
+	font-weight: var(--font-body-weight);
+	border: 1px solid transparent;
+	border-radius: var(--radius-button);
+	cursor: pointer;
+	transition: all 0.2s ease-in-out;
+	text-decoration: none;
+}
+
+.btn-primary {
+	background-color: var(--color-emerald-500);
+	color: #ffffff;
+}
+.btn-primary:hover { background-color: var(--color-emerald-600); }
+
+.btn-secondary {
+	background-color: var(--color-surface-700);
+	color: #ffffff;
+	border-color: var(--color-border-subtle-500);
+}

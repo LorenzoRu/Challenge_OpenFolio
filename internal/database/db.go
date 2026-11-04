@@ -140,3 +140,12 @@ func GetSessionUser(db *sql.DB, token string) (int64, string, error) {
 	).Scan(&userID, &email)
 	return userID, email, err
 }
+
+// CountUsers retourne le nombre d'utilisateurs en base.
+func CountUsers(db *sql.DB) (int64, error) {
+	var count int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("echec comptage utilisateurs: %w", err)
+	}
+	return count, nil
+}
