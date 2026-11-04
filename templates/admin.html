@@ -26,27 +26,39 @@
 	</header>
 
 	<main class="dashboard">
-		<h1 class="hero">Dashboard</h1>
+		<div class="dashboard-heading">
+			<div>
+				<h1 class="hero">Dashboard</h1>
+				<p class="dashboard-subtitle">Gérez vos pages et suivez votre portfolio.</p>
+			</div>
+			<button type="button" class="btn btn-primary" data-open-dialog="create-page-dialog">
+				<span class="material-symbols-rounded">add</span>
+				<span>Nouvelle page</span>
+			</button>
+		</div>
 
-		<section class="stats-grid">
+		{{if .Error}}<p class="alert alert-error" role="alert">{{.Error}}</p>{{end}}
+		{{if .Success}}<p class="alert alert-success" role="status">{{.Success}}</p>{{end}}
+
+		<section class="stats-grid" aria-label="Statistiques">
 			<article class="card stat-card">
 				<span class="material-symbols-rounded stat-icon">folder</span>
 				<div>
-					<p class="stat-value">3</p>
+					<p class="stat-value">{{.Stats.ActiveProjects}}</p>
 					<p class="stat-label">Projets actifs</p>
 				</div>
 			</article>
 			<article class="card stat-card">
 				<span class="material-symbols-rounded stat-icon">dashboard_customize</span>
 				<div>
-					<p class="stat-value">5</p>
+					<p class="stat-value">{{.Stats.Templates}}</p>
 					<p class="stat-label">Templates</p>
 				</div>
 			</article>
 			<article class="card stat-card">
 				<span class="material-symbols-rounded stat-icon">image</span>
 				<div>
-					<p class="stat-value">12</p>
+					<p class="stat-value">{{.Stats.Media}}</p>
 					<p class="stat-label">Medias</p>
 				</div>
 			</article>
@@ -54,54 +66,131 @@
 
 		<div class="dashboard-columns">
 			<section class="card pages-section">
-				<h2>Mes pages</h2>
+				<div class="section-head">
+					<h2>Mes pages</h2>
+					<span class="section-count">{{len .Pages}} page{{if ne (len .Pages) 1}}s{{end}}</span>
+				</div>
+
+				{{if .Pages}}
 				<ul class="page-list">
+					{{range .Pages}}
 					<li class="page-item">
-						<span class="page-name">Accueil</span>
-						<button type="button" class="btn btn-secondary btn-sm">
-							<span class="material-symbols-rounded">edit</span>
-							<span>Modifier</span>
-						</button>
+						<div class="page-info">
+							<div class="page-title-row">
+								<span class="page-name">{{.Title}}</span>
+								<span class="status-badge status-{{.Status}}">
+									{{if eq .Status "published"}}Publiée{{else}}Brouillon{{end}}
+								</span>
+							</div>
+							<span class="page-meta">/u/{{.Slug}}</span>
+						</div>
+						<div class="page-actions">
+							<a class="btn btn-primary btn-sm" href="/admin/pages/{{.ID}}/edit">
+								<span class="material-symbols-rounded">edit_note</span>
+								<span>Modifier</span>
+							</a>
+							<details class="page-edit">
+								<summary class="btn btn-secondary btn-sm">
+									<span class="material-symbols-rounded">edit</span>
+									<span>Renommer</span>
+								</summary>
+								<form method="POST" action="/admin/pages/{{.ID}}/update" class="inline-form">
+									<div class="form-group">
+										<label for="title-{{.ID}}">Titre</label>
+										<input type="text" id="title-{{.ID}}" name="title" value="{{.Title}}" required />
+									</div>
+									<div class="form-group">
+										<label for="slug-{{.ID}}">Slug</label>
+										<input type="text" id="slug-{{.ID}}" name="slug" value="{{.Slug}}" required />
+									</div>
+									<div class="form-group">
+										<label for="status-{{.ID}}">Statut</label>
+										<select id="status-{{.ID}}" name="status">
+											<option value="draft" {{if eq .Status "draft"}}selected{{end}}>Brouillon</option>
+											<option value="published" {{if eq .Status "published"}}selected{{end}}>Publiée</option>
+										</select>
+									</div>
+									<button type="submit" class="btn btn-primary btn-sm">
+										<span class="material-symbols-rounded">check</span>
+										<span>Enregistrer</span>
+									</button>
+								</form>
+							</details>
+							<form method="POST" action="/admin/pages/{{.ID}}/delete" data-confirm="Supprimer la page « {{.Title}} » ?">
+								<button type="submit" class="btn btn-danger btn-sm">
+									<span class="material-symbols-rounded">delete</span>
+									<span>Supprimer</span>
+								</button>
+							</form>
+						</div>
 					</li>
-					<li class="page-item">
-						<span class="page-name">A propos</span>
-						<button type="button" class="btn btn-secondary btn-sm">
-							<span class="material-symbols-rounded">edit</span>
-							<span>Modifier</span>
-						</button>
-					</li>
-					<li class="page-item">
-						<span class="page-name">Projets</span>
-						<button type="button" class="btn btn-secondary btn-sm">
-							<span class="material-symbols-rounded">edit</span>
-							<span>Modifier</span>
-						</button>
-					</li>
-					<li class="page-item">
-						<span class="page-name">Contact</span>
-						<button type="button" class="btn btn-secondary btn-sm">
-							<span class="material-symbols-rounded">edit</span>
-							<span>Modifier</span>
-						</button>
-					</li>
+					{{end}}
 				</ul>
+				{{else}}
+				<div class="empty-state">
+					<span class="material-symbols-rounded">note_add</span>
+					<p>Aucune page pour le moment.</p>
+					<button type="button" class="btn btn-primary btn-sm" data-open-dialog="create-page-dialog">
+						<span class="material-symbols-rounded">add</span>
+						<span>Créer ma première page</span>
+					</button>
+				</div>
+				{{end}}
 			</section>
 
 			<aside class="card preview-section">
-				<h2>Apercu du portfolio</h2>
-				<div class="preview-window">
-					<div class="preview-hero"></div>
-					<div class="preview-lines">
-						<span class="preview-line"></span>
-						<span class="preview-line short"></span>
-					</div>
+				<div class="section-head">
+					<h2>Aperçu du portfolio</h2>
 				</div>
-				<button type="button" class="btn btn-primary">
-					<span class="material-symbols-rounded">visibility</span>
+				{{if .PreviewSlug}}
+				<iframe class="preview-frame" src="/u/{{.PreviewSlug}}" title="Aperçu du portfolio" loading="lazy"></iframe>
+				<a class="btn btn-primary" href="/u/{{.PreviewSlug}}" target="_blank" rel="noopener">
+					<span class="material-symbols-rounded">open_in_new</span>
 					<span>Voir le portfolio</span>
-				</button>
+				</a>
+				{{else}}
+				<div class="preview-empty">
+					<span class="material-symbols-rounded">visibility_off</span>
+					<p>Publiez une page pour afficher l'aperçu.</p>
+				</div>
+				{{end}}
 			</aside>
 		</div>
 	</main>
+
+	<dialog id="create-page-dialog" class="dialog">
+		<form method="POST" action="/admin/pages" class="dialog-form">
+			<header class="dialog-head">
+				<h2>Nouvelle page</h2>
+				<button type="button" class="icon-btn" data-close-dialog aria-label="Fermer">
+					<span class="material-symbols-rounded">close</span>
+				</button>
+			</header>
+			<div class="form-group">
+				<label for="new-title">Titre</label>
+				<input type="text" id="new-title" name="title" required autofocus />
+			</div>
+			<div class="form-group">
+				<label for="new-slug">Slug (optionnel)</label>
+				<input type="text" id="new-slug" name="slug" placeholder="genere automatiquement" />
+			</div>
+			<div class="form-group">
+				<label for="new-status">Statut</label>
+				<select id="new-status" name="status">
+					<option value="draft">Brouillon</option>
+					<option value="published">Publiée</option>
+				</select>
+			</div>
+			<div class="dialog-actions">
+				<button type="button" class="btn btn-secondary" data-close-dialog>Annuler</button>
+				<button type="submit" class="btn btn-primary">
+					<span class="material-symbols-rounded">add</span>
+					<span>Créer la page</span>
+				</button>
+			</div>
+		</form>
+	</dialog>
+
+	<script src="/static/js/app.js" defer></script>
 </body>
 </html>

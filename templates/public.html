@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{.Page.Title}} — OpenFolio</title>
+	<link rel="stylesheet" href="/static/css/tokens.css" />
+	<link rel="stylesheet" href="/static/css/main.css" />
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
+</head>
+<body class="public-body">
+	<header class="public-header">
+		<a class="app-logo" href="/">
+			<span class="material-symbols-rounded">dashboard</span>
+			<span>OpenFolio</span>
+		</a>
+	</header>
+
+	<main class="public-main">
+		<section class="public-hero">
+			<p class="public-eyebrow">Portfolio</p>
+			<h1 class="hero public-title">{{.Page.Title}}</h1>
+
+			{{if .Blocks}}
+			<div class="public-content">
+				{{range .Blocks}}
+					{{if eq .Type "heading"}}
+					<h2 class="public-block-heading">{{.Text}}</h2>
+					{{else if eq .Type "text"}}
+					<p class="public-block-text">{{.Text}}</p>
+					{{else if eq .Type "button"}}
+					<a class="btn btn-primary" href="{{.URL}}">{{.Text}}</a>
+					{{else}}
+						{{if .Text}}<p class="public-block-text">{{.Text}}</p>{{end}}
+					{{end}}
+				{{end}}
+			</div>
+			{{else}}
+			<p class="public-block-text">
+				Cette page est prête à accueillir votre contenu.
+			</p>
+			{{end}}
+		</section>
+	</main>
+
+	<footer class="public-footer">
+		<span>Propulsé par OpenFolio</span>
+	</footer>
+</body>
+</html>
