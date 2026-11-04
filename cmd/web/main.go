@@ -49,8 +49,8 @@ func main() {
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
 	mux.HandleFunc("POST /auth/logout", s.handleLogout)
 	// La creation de compte (signup) est protegee par le middleware d'auth.
-	mux.Handle("GET /auth/signup", s.requireAuth(http.HandlerFunc(s.handleSignupPage)))
-	mux.Handle("POST /auth/signup", s.requireAuth(http.HandlerFunc(s.handleSignup)))
+	mux.Handle("GET /auth/signup", s.requireAuthOrSignupFirst(http.HandlerFunc(s.handleSignupPage)))
+	mux.Handle("POST /auth/signup", s.requireAuthOrSignupFirst(http.HandlerFunc(s.handleSignup)))
 	mux.Handle("GET /admin", s.requireAuth(http.HandlerFunc(s.handleAdmin)))
 
 	// Serves static assets (design tokens, styles, fonts) from the /static/ path.
@@ -226,6 +226,20 @@ func (s *server) requireAuth(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+// requireAuthOrSignupFirst protege les routes privees (ex: /admin), sauf pour
+// /auth/signup lorsqu'aucun compte n'existe encore (premiere creation admin).
+func (s *server) requireAuthOrSignupFirst(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/auth/signup" {
+			if count, err := database.CountUsers(s.db); err == nil && count == 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		s.requireAuth(next).ServeHTTP(w, r)
 	})
 }
 
