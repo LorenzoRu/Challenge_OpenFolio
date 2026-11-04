@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Modifier {{.Page.Title}} — OpenFolio</title>
+	<link rel="stylesheet" href="/static/css/tokens.css" />
+	<link rel="stylesheet" href="/static/css/main.css" />
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
+</head>
+<body>
+	<header class="app-header">
+		<a class="app-logo" href="/admin">
+			<span class="material-symbols-rounded">dashboard</span>
+			<span>OpenFolio</span>
+		</a>
+		<div class="app-user">
+			<span class="app-email">{{.Email}}</span>
+			<form method="POST" action="/auth/logout">
+				<button type="submit" class="btn btn-secondary">
+					<span class="material-symbols-rounded">logout</span>
+					<span>Deconnexion</span>
+				</button>
+			</form>
+		</div>
+	</header>
+
+	<main class="dashboard">
+		<a class="back-link" href="/admin">
+			<span class="material-symbols-rounded">arrow_back</span>
+			<span>Retour au dashboard</span>
+		</a>
+
+		<div class="dashboard-heading">
+			<div>
+				<h1 class="hero">Modifier « {{.Page.Title}} »</h1>
+				<div class="page-title-row">
+					<span class="page-meta">/{{.Page.Slug}}</span>
+					<span class="status-badge status-{{.Page.Status}}">
+						{{if eq .Page.Status "published"}}Publiée{{else}}Brouillon{{end}}
+					</span>
+				</div>
+			</div>
+			{{if eq .Page.Status "published"}}
+			<a class="btn btn-secondary" href="/{{.Page.Slug}}" target="_blank" rel="noopener">
+				<span class="material-symbols-rounded">open_in_new</span>
+				<span>Voir la page</span>
+			</a>
+			{{end}}
+		</div>
+
+		<section class="card editor-placeholder">
+			<span class="material-symbols-rounded editor-placeholder-icon">construction</span>
+			<h2>L'éditeur arrive bientôt</h2>
+			<p>
+				Le builder visuel (glisser-déposer de blocs : bannière, texte, galerie, bouton, liens)
+				sera disponible dans la prochaine feature.
+			</p>
+			<p class="editor-hint">
+				En attendant, vous pouvez renommer ou changer le statut de cette page depuis le dashboard.
+			</p>
+			<a class="btn btn-primary" href="/admin">
+				<span class="material-symbols-rounded">dashboard</span>
+				<span>Retour au dashboard</span>
+			</a>
+		</section>
+	</main>
+</body>
+</html>
