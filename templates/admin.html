@@ -31,14 +31,23 @@
 				<h1 class="hero">Dashboard</h1>
 				<p class="dashboard-subtitle">Gérez vos pages et suivez votre portfolio.</p>
 			</div>
-			<button type="button" class="btn btn-primary" data-open-dialog="create-page-dialog">
-				<span class="material-symbols-rounded">add</span>
-				<span>Nouvelle page</span>
-			</button>
+			<div class="dashboard-actions">
+				<form method="POST" action="/admin/maintenance">
+					<button type="submit" class="btn {{if .Maintenance}}btn-danger{{else}}btn-secondary{{end}}">
+						<span class="material-symbols-rounded">{{if .Maintenance}}settings_backup_restore{{else}}engineering{{end}}</span>
+						<span>{{if .Maintenance}}Désactiver la maintenance{{else}}Activer la maintenance{{end}}</span>
+					</button>
+				</form>
+				<button type="button" class="btn btn-primary" data-open-dialog="create-page-dialog">
+					<span class="material-symbols-rounded">add</span>
+					<span>Nouvelle page</span>
+				</button>
+			</div>
 		</div>
 
 		{{if .Error}}<p class="alert alert-error" role="alert">{{.Error}}</p>{{end}}
 		{{if .Success}}<p class="alert alert-success" role="status">{{.Success}}</p>{{end}}
+		{{if .Maintenance}}<p class="alert alert-warning" role="status">Mode maintenance actif : le site public affiche la page de maintenance. Le dashboard reste accessible.</p>{{end}}
 
 		<section class="stats-grid" aria-label="Statistiques">
 			<article class="card stat-card">
@@ -82,7 +91,7 @@
 									{{if eq .Status "published"}}Publiée{{else}}Brouillon{{end}}
 								</span>
 							</div>
-							<span class="page-meta">/u/{{.Slug}}</span>
+							<span class="page-meta">/{{.Slug}}</span>
 						</div>
 						<div class="page-actions">
 							<a class="btn btn-primary btn-sm" href="/admin/pages/{{.ID}}/edit">
@@ -143,8 +152,8 @@
 					<h2>Aperçu du portfolio</h2>
 				</div>
 				{{if .PreviewSlug}}
-				<iframe class="preview-frame" src="/u/{{.PreviewSlug}}" title="Aperçu du portfolio" loading="lazy"></iframe>
-				<a class="btn btn-primary" href="/u/{{.PreviewSlug}}" target="_blank" rel="noopener">
+				<iframe class="preview-frame" src="/{{.PreviewSlug}}" title="Aperçu du portfolio" loading="lazy"></iframe>
+				<a class="btn btn-primary" href="/{{.PreviewSlug}}" target="_blank" rel="noopener">
 					<span class="material-symbols-rounded">open_in_new</span>
 					<span>Voir le portfolio</span>
 				</a>

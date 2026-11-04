@@ -35,14 +35,14 @@
 			<div>
 				<h1 class="hero">Modifier « {{.Page.Title}} »</h1>
 				<div class="page-title-row">
-					<span class="page-meta">/u/{{.Page.Slug}}</span>
+					<span class="page-meta">/{{.Page.Slug}}</span>
 					<span class="status-badge status-{{.Page.Status}}">
 						{{if eq .Page.Status "published"}}Publiée{{else}}Brouillon{{end}}
 					</span>
 				</div>
 			</div>
 			{{if eq .Page.Status "published"}}
-			<a class="btn btn-secondary" href="/u/{{.Page.Slug}}" target="_blank" rel="noopener">
+			<a class="btn btn-secondary" href="/{{.Page.Slug}}" target="_blank" rel="noopener">
 				<span class="material-symbols-rounded">open_in_new</span>
 				<span>Voir la page</span>
 			</a>

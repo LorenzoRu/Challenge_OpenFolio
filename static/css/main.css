@@ -413,6 +413,13 @@ select { appearance: none; cursor: pointer; }
 	margin-top: 0.5rem;
 }
 
+.dashboard-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
 /* Messages */
 .alert {
 	padding: 0.875rem 1rem;
@@ -430,6 +437,12 @@ select { appearance: none; cursor: pointer; }
 	background-color: rgba(46, 204, 113, 0.1);
 	border: 1px solid rgba(46, 204, 113, 0.35);
 	color: var(--color-emerald-500);
+}
+
+.alert-warning {
+	background-color: rgba(234, 86, 44, 0.1);
+	border: 1px solid rgba(234, 86, 44, 0.35);
+	color: var(--color-solar-500);
 }
 
 /* Titres de section */

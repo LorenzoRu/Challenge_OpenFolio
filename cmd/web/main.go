@@ -43,6 +43,7 @@ func main() {
 
 	tmpl := template.Must(template.ParseFiles(
 		"templates/construction.html",
+		"templates/maintenance.html",
 		"templates/login.html",
 		"templates/signup.html",
 		"templates/admin.html",
@@ -66,9 +67,10 @@ func main() {
 	mux.Handle("GET /admin/pages/{id}/edit", s.requireAuth(http.HandlerFunc(s.handleEditPage)))
 	mux.Handle("POST /admin/pages/{id}/update", s.requireAuth(http.HandlerFunc(s.handleUpdatePage)))
 	mux.Handle("POST /admin/pages/{id}/delete", s.requireAuth(http.HandlerFunc(s.handleDeletePage)))
+	mux.Handle("POST /admin/maintenance", s.requireAuth(http.HandlerFunc(s.handleToggleMaintenance)))
 
-	// Route publique d'aperçu d'une page publiée.
-	mux.HandleFunc("GET /u/{slug}", s.handlePublicPage)
+	// Route publique d'aperçu d'une page publiée (sans préfixe utilisateur).
+	mux.HandleFunc("GET /{slug}", s.handlePublicPage)
 
 	// Serves static assets (design tokens, styles, fonts) from the /static/ path.
 	mux.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir("static"))))
@@ -85,19 +87,37 @@ func main() {
 
 // render render un template avec les donnees.
 func (s *server) render(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
+	s.renderStatus(w, r, name, data, http.StatusOK)
+}
+
+// renderStatus render un template avec un code de statut HTTP explicite.
+func (s *server) renderStatus(w http.ResponseWriter, r *http.Request, name string, data map[string]any, status int) {
 	tmpl := s.templates.Lookup(name)
 	if tmpl == nil {
 		http.Error(w, "Template introuvable", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+	}
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Erreur execution template %s: %v", name, err)
 	}
 }
 
-// handleConstruction affiche la page publique "site en construction".
+// handleConstruction affiche la page publique "site en construction" ou la maintenance.
 func (s *server) handleConstruction(w http.ResponseWriter, r *http.Request) {
+	maintenance, err := database.GetMaintenance(s.db)
+	if err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	if maintenance {
+		w.Header().Set("Retry-After", "3600")
+		s.renderStatus(w, r, "maintenance.html", nil, http.StatusServiceUnavailable)
+		return
+	}
 	s.render(w, r, "construction.html", nil)
 }
 
@@ -256,12 +276,18 @@ func (s *server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
 		return
 	}
+	maintenance, err := database.GetMaintenance(s.db)
+	if err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
 
 	s.render(w, r, "admin.html", map[string]any{
 		"Email":       email,
 		"Stats":       stats,
 		"Pages":       pages,
 		"PreviewSlug": previewSlug,
+		"Maintenance": maintenance,
 		"Error":       dashboardError(r.URL.Query().Get("error")),
 		"Success":     dashboardSuccess(r.URL.Query().Get("success")),
 	})
@@ -284,6 +310,10 @@ func (s *server) handleCreatePage(w http.ResponseWriter, r *http.Request) {
 	}
 	if title == "" || slug == "" {
 		http.Redirect(w, r, "/admin?error=invalid", http.StatusSeeOther)
+		return
+	}
+	if isReservedSlug(slug) {
+		http.Redirect(w, r, "/admin?error=slug", http.StatusSeeOther)
 		return
 	}
 
@@ -348,6 +378,10 @@ func (s *server) handleUpdatePage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin?error=invalid", http.StatusSeeOther)
 		return
 	}
+	if isReservedSlug(slug) {
+		http.Redirect(w, r, "/admin?error=slug", http.StatusSeeOther)
+		return
+	}
 
 	if err := database.UpdatePage(s.db, userID, pageID, title, slug, status); err != nil {
 		switch {
@@ -387,6 +421,30 @@ func (s *server) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?success=deleted", http.StatusSeeOther)
 }
 
+// handleToggleMaintenance active ou desactive le mode maintenance.
+func (s *server) handleToggleMaintenance(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.currentUser(r); !ok {
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		return
+	}
+
+	current, err := database.GetMaintenance(s.db)
+	if err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	next := !current
+	if err := database.SetMaintenance(s.db, next); err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	if next {
+		http.Redirect(w, r, "/admin?success=maintenance_on", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin?success=maintenance_off", http.StatusSeeOther)
+}
+
 // contentBlock represente un bloc de contenu stocke en JSON dans une page.
 type contentBlock struct {
 	Type  string `json:"type"`
@@ -397,6 +455,17 @@ type contentBlock struct {
 
 // handlePublicPage rend publiquement une page publiee via son slug.
 func (s *server) handlePublicPage(w http.ResponseWriter, r *http.Request) {
+	maintenance, err := database.GetMaintenance(s.db)
+	if err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	if maintenance {
+		w.Header().Set("Retry-After", "3600")
+		s.renderStatus(w, r, "maintenance.html", nil, http.StatusServiceUnavailable)
+		return
+	}
+
 	slug := strings.TrimSpace(r.PathValue("slug"))
 	page, err := database.GetPublishedPageBySlug(s.db, slug)
 	if err != nil {
@@ -442,8 +511,22 @@ func dashboardSuccess(code string) string {
 		return "Page mise à jour."
 	case "deleted":
 		return "Page supprimée."
+	case "maintenance_on":
+		return "Mode maintenance activé : le site public est indisponible."
+	case "maintenance_off":
+		return "Mode maintenance désactivé : le site public est de nouveau accessible."
 	default:
 		return ""
+	}
+}
+
+// isReservedSlug interdit les slugs qui entreraient en conflit avec les routes applicatives.
+func isReservedSlug(slug string) bool {
+	switch slug {
+	case "admin", "auth", "static", "p", "u", "login", "signup", "logout", "maintenance", "favicon.ico":
+		return true
+	default:
+		return false
 	}
 }
 

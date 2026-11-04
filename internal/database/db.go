@@ -204,6 +204,36 @@ func CountUsers(db *sql.DB) (int64, error) {
 	return count, nil
 }
 
+// GetMaintenance indique si le mode maintenance est actif.
+func GetMaintenance(db *sql.DB) (bool, error) {
+	var value string
+	err := db.QueryRow(`SELECT value FROM app_meta WHERE key = 'maintenance'`).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("échec lecture mode maintenance: %w", err)
+	}
+	return value == "on", nil
+}
+
+// SetMaintenance active ou désactive le mode maintenance.
+func SetMaintenance(db *sql.DB, enabled bool) error {
+	value := "off"
+	if enabled {
+		value = "on"
+	}
+	_, err := db.Exec(
+		`INSERT INTO app_meta (key, value) VALUES ('maintenance', $1)
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+		value,
+	)
+	if err != nil {
+		return fmt.Errorf("échec mise à jour mode maintenance: %w", err)
+	}
+	return nil
+}
+
 // GetStats retourne les indicateurs clés du dashboard.
 func GetStats(db *sql.DB) (Stats, error) {
 	var stats Stats
