@@ -55,7 +55,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	// Page publique du site (en construction).
-	mux.HandleFunc("GET /{$}", s.handleConstruction)
+	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /auth/login", s.handleLoginPage)
 	mux.HandleFunc("POST /auth/login", s.handleLogin)
 	mux.HandleFunc("POST /auth/logout", s.handleLogout)
@@ -67,6 +67,8 @@ func main() {
 	mux.Handle("GET /admin/pages/{id}/edit", s.requireAuth(http.HandlerFunc(s.handleEditPage)))
 	mux.Handle("POST /admin/pages/{id}/update", s.requireAuth(http.HandlerFunc(s.handleUpdatePage)))
 	mux.Handle("POST /admin/pages/{id}/delete", s.requireAuth(http.HandlerFunc(s.handleDeletePage)))
+	mux.Handle("POST /admin/pages/{id}/home", s.requireAuth(http.HandlerFunc(s.handleSetHomePage)))
+	mux.Handle("POST /admin/home/clear", s.requireAuth(http.HandlerFunc(s.handleClearHomePage)))
 	mux.Handle("POST /admin/maintenance", s.requireAuth(http.HandlerFunc(s.handleToggleMaintenance)))
 
 	// Route publique d'aperçu d'une page publiée (sans préfixe utilisateur).
@@ -106,8 +108,8 @@ func (s *server) renderStatus(w http.ResponseWriter, r *http.Request, name strin
 	}
 }
 
-// handleConstruction affiche la page publique "site en construction" ou la maintenance.
-func (s *server) handleConstruction(w http.ResponseWriter, r *http.Request) {
+// handleRoot sert la page d'accueil définie, sinon le site en construction.
+func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	maintenance, err := database.GetMaintenance(s.db)
 	if err != nil {
 		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
@@ -116,6 +118,16 @@ func (s *server) handleConstruction(w http.ResponseWriter, r *http.Request) {
 	if maintenance {
 		w.Header().Set("Retry-After", "3600")
 		s.renderStatus(w, r, "maintenance.html", nil, http.StatusServiceUnavailable)
+		return
+	}
+
+	home, err := database.GetHomePage(s.db)
+	if err == nil {
+		s.renderPublicPage(w, r, home)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
 		return
 	}
 	s.render(w, r, "construction.html", nil)
@@ -281,6 +293,11 @@ func (s *server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
 		return
 	}
+	homePageID, err := database.GetHomePageID(s.db)
+	if err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
 
 	s.render(w, r, "admin.html", map[string]any{
 		"Email":       email,
@@ -288,6 +305,7 @@ func (s *server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		"Pages":       pages,
 		"PreviewSlug": previewSlug,
 		"Maintenance": maintenance,
+		"HomePageID":  homePageID,
 		"Error":       dashboardError(r.URL.Query().Get("error")),
 		"Success":     dashboardSuccess(r.URL.Query().Get("success")),
 	})
@@ -394,6 +412,14 @@ func (s *server) handleUpdatePage(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// Une page d'accueil doit rester publiée : on la retire si elle repasse en brouillon.
+	if status != "published" {
+		if err := s.clearHomeIfMatches(pageID); err != nil {
+			http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+			return
+		}
+	}
 	http.Redirect(w, r, "/admin?success=updated", http.StatusSeeOther)
 }
 
@@ -415,6 +441,11 @@ func (s *server) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin?error=notfound", http.StatusSeeOther)
 			return
 		}
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	// Si la page supprimée était l'accueil, "/" repasse en construction.
+	if err := s.clearHomeIfMatches(pageID); err != nil {
 		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
 		return
 	}
@@ -477,6 +508,11 @@ func (s *server) handlePublicPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.renderPublicPage(w, r, page)
+}
+
+// renderPublicPage affiche une page publique avec ses blocs JSON.
+func (s *server) renderPublicPage(w http.ResponseWriter, r *http.Request, page database.Page) {
 	var blocks []contentBlock
 	if len(page.Content) > 0 {
 		if err := json.Unmarshal(page.Content, &blocks); err != nil {
@@ -488,6 +524,65 @@ func (s *server) handlePublicPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "public.html", map[string]any{"Page": page, "Blocks": blocks})
 }
 
+// handleSetHomePage définit la page servie sur la route "/".
+func (s *server) handleSetHomePage(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.currentUser(r)
+	if !ok {
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		return
+	}
+	pageID := parsePageID(r.PathValue("id"))
+	if pageID == 0 {
+		http.Redirect(w, r, "/admin?error=notfound", http.StatusSeeOther)
+		return
+	}
+
+	page, err := database.GetPage(s.db, userID, pageID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Redirect(w, r, "/admin?error=notfound", http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	if page.Status != "published" {
+		http.Redirect(w, r, "/admin?error=home_draft", http.StatusSeeOther)
+		return
+	}
+
+	if err := database.SetHomePage(s.db, pageID); err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin?success=home_set", http.StatusSeeOther)
+}
+
+// handleClearHomePage retire la page d'accueil : "/" repasse en construction.
+func (s *server) handleClearHomePage(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.currentUser(r); !ok {
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		return
+	}
+	if err := database.ClearHomePage(s.db); err != nil {
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin?success=home_cleared", http.StatusSeeOther)
+}
+
+// clearHomeIfMatches retire l'accueil si la page correspondante n'est plus disponible.
+func (s *server) clearHomeIfMatches(pageID int64) error {
+	homeID, err := database.GetHomePageID(s.db)
+	if err != nil {
+		return err
+	}
+	if homeID != pageID {
+		return nil
+	}
+	return database.ClearHomePage(s.db)
+}
+
 // dashboardError traduit un code d'erreur de l'URL en message lisible.
 func dashboardError(code string) string {
 	switch code {
@@ -497,6 +592,8 @@ func dashboardError(code string) string {
 		return "Ce slug est déjà utilisé."
 	case "notfound":
 		return "Page introuvable."
+	case "home_draft":
+		return "La page d'accueil doit être publiée. Publiez la page avant de la définir comme accueil."
 	default:
 		return ""
 	}
@@ -515,6 +612,10 @@ func dashboardSuccess(code string) string {
 		return "Mode maintenance activé : le site public est indisponible."
 	case "maintenance_off":
 		return "Mode maintenance désactivé : le site public est de nouveau accessible."
+	case "home_set":
+		return "Page d'accueil mise à jour : elle est désormais servie sur la route /."
+	case "home_cleared":
+		return "Page d'accueil retirée : la route / affiche de nouveau le site en construction."
 	default:
 		return ""
 	}

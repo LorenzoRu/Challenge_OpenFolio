@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -350,10 +351,18 @@ func GetPublishedPageBySlug(db *sql.DB, slug string) (Page, error) {
 	return p, nil
 }
 
-// GetPreviewSlug retourne le slug de la première page publiée pour l'aperçu.
+// GetPreviewSlug retourne le slug de la page d'accueil si définie, sinon la première page publiée.
 func GetPreviewSlug(db *sql.DB, userID int64) (string, error) {
+	home, err := GetHomePage(db)
+	if err == nil {
+		return home.Slug, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+
 	var slug string
-	err := db.QueryRow(
+	err = db.QueryRow(
 		`SELECT slug FROM pages WHERE user_id = $1 AND status = 'published' ORDER BY id ASC LIMIT 1`,
 		userID,
 	).Scan(&slug)
@@ -364,6 +373,69 @@ func GetPreviewSlug(db *sql.DB, userID int64) (string, error) {
 		return "", fmt.Errorf("échec recherche page aperçu: %w", err)
 	}
 	return slug, nil
+}
+
+const homePageMetaKey = "home_page_id"
+
+// GetHomePageID retourne l'id de la page définie comme accueil (0 si aucune).
+func GetHomePageID(db *sql.DB) (int64, error) {
+	var value string
+	err := db.QueryRow(`SELECT value FROM app_meta WHERE key = $1`, homePageMetaKey).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("échec lecture page d'accueil: %w", err)
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, nil
+	}
+	return id, nil
+}
+
+// SetHomePage définit la page servie sur la route "/".
+func SetHomePage(db *sql.DB, pageID int64) error {
+	_, err := db.Exec(
+		`INSERT INTO app_meta (key, value) VALUES ($1, $2)
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+		homePageMetaKey, strconv.FormatInt(pageID, 10),
+	)
+	if err != nil {
+		return fmt.Errorf("échec enregistrement page d'accueil: %w", err)
+	}
+	return nil
+}
+
+// ClearHomePage retire la page d'accueil (retour à la page de construction).
+func ClearHomePage(db *sql.DB) error {
+	_, err := db.Exec(`DELETE FROM app_meta WHERE key = $1`, homePageMetaKey)
+	if err != nil {
+		return fmt.Errorf("échec suppression page d'accueil: %w", err)
+	}
+	return nil
+}
+
+// GetHomePage retourne la page d'accueil si elle existe et est publiée.
+func GetHomePage(db *sql.DB) (Page, error) {
+	id, err := GetHomePageID(db)
+	if err != nil {
+		return Page{}, err
+	}
+	if id == 0 {
+		return Page{}, sql.ErrNoRows
+	}
+
+	var p Page
+	err = db.QueryRow(
+		`SELECT id, user_id, title, slug, status, content, updated_at
+		 FROM pages WHERE id = $1 AND status = 'published'`,
+		id,
+	).Scan(&p.ID, &p.UserID, &p.Title, &p.Slug, &p.Status, &p.Content, &p.UpdatedAt)
+	if err != nil {
+		return Page{}, err
+	}
+	return p, nil
 }
 
 // SeedDemoData prépare les données de démonstration du dashboard.

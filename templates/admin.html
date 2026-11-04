@@ -90,10 +90,31 @@
 								<span class="status-badge status-{{.Status}}">
 									{{if eq .Status "published"}}Publiée{{else}}Brouillon{{end}}
 								</span>
+								{{if eq .ID $.HomePageID}}
+								<span class="badge-home">
+									<span class="material-symbols-rounded">home</span>
+									<span>Accueil</span>
+								</span>
+								{{end}}
 							</div>
 							<span class="page-meta">/{{.Slug}}</span>
 						</div>
 						<div class="page-actions">
+							{{if eq .ID $.HomePageID}}
+							<form method="POST" action="/admin/home/clear">
+								<button type="submit" class="btn btn-secondary btn-sm">
+									<span class="material-symbols-rounded">home_work</span>
+									<span>Retirer l'accueil</span>
+								</button>
+							</form>
+							{{else if eq .Status "published"}}
+							<form method="POST" action="/admin/pages/{{.ID}}/home">
+								<button type="submit" class="btn btn-secondary btn-sm">
+									<span class="material-symbols-rounded">home</span>
+									<span>Définir comme accueil</span>
+								</button>
+							</form>
+							{{end}}
 							<a class="btn btn-primary btn-sm" href="/admin/pages/{{.ID}}/edit">
 								<span class="material-symbols-rounded">edit_note</span>
 								<span>Modifier</span>

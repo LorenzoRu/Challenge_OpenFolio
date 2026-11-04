@@ -289,6 +289,25 @@ select { appearance: none; cursor: pointer; }
 	color: var(--color-muted-stone-400);
 }
 
+.badge-home {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.125rem 0.625rem;
+	border-radius: var(--radius-button);
+	background-color: rgba(234, 86, 44, 0.14);
+	color: var(--color-solar-500);
+	font-size: var(--font-caption-size);
+	font-weight: var(--font-caption-weight);
+	letter-spacing: var(--font-caption-tracking);
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.badge-home .material-symbols-rounded {
+	font-size: 0.9em;
+}
+
 .page-edit summary {
 	list-style: none;
 }
