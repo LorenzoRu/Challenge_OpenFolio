@@ -311,6 +311,49 @@ func UpdatePage(db *sql.DB, userID, pageID int64, title, slug, status string) er
 	return nil
 }
 
+// UpdatePageContent enregistre le contenu JSON d'une page.
+func UpdatePageContent(db *sql.DB, userID, pageID int64, content []byte) error {
+	result, err := db.Exec(
+		`UPDATE pages SET content = $1::jsonb, updated_at = NOW()
+		 WHERE id = $2 AND user_id = $3`,
+		string(content), pageID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("échec mise à jour contenu page: %w", err)
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// ListPublishedPages retourne les pages publiées d'un utilisateur (navigation publique).
+func ListPublishedPages(db *sql.DB, userID int64) ([]Page, error) {
+	rows, err := db.Query(
+		`SELECT id, user_id, title, slug, status, content, updated_at
+		 FROM pages WHERE user_id = $1 AND status = 'published'
+		 ORDER BY id ASC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("échec liste pages publiées: %w", err)
+	}
+	defer rows.Close()
+
+	var pages []Page
+	for rows.Next() {
+		var p Page
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Title, &p.Slug, &p.Status, &p.Content, &p.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("échec lecture page publiée: %w", err)
+		}
+		pages = append(pages, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("échec parcours pages publiées: %w", err)
+	}
+	return pages, nil
+}
+
 // DeletePage supprime une page appartenant à l'utilisateur.
 func DeletePage(db *sql.DB, userID, pageID int64) error {
 	result, err := db.Exec(`DELETE FROM pages WHERE id = $1 AND user_id = $2`, pageID, userID)

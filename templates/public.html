@@ -4,17 +4,32 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>{{.Page.Title}} — OpenFolio</title>
+	{{if .Description}}<meta name="description" content="{{.Description}}">{{end}}
 	<link rel="stylesheet" href="/static/css/tokens.css" />
 	<link rel="stylesheet" href="/static/css/main.css" />
 	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
 </head>
 <body class="public-body">
+
 	<header class="public-header">
 		<a class="app-logo" href="/">
 			<span class="material-symbols-rounded">dashboard</span>
 			<span>OpenFolio</span>
 		</a>
+		<button class="public-nav-toggle" aria-label="Menu">
+			<span class="material-symbols-rounded">menu</span>
+		</button>
 	</header>
+
+	<nav class="public-nav">
+		<ul class="public-nav-list">
+			{{range .NavPages}}
+			<li><a class="public-nav-link{{if .Active}} public-nav-link-active{{end}}" href="{{.Href}}">{{.Title}}</a></li>
+			{{else}}
+			<li><a class="public-nav-link" href="/">Accueil</a></li>
+			{{end}}
+		</ul>
+	</nav>
 
 	<main class="public-main">
 		<section class="public-hero">
@@ -24,27 +39,69 @@
 			{{if .Blocks}}
 			<div class="public-content">
 				{{range .Blocks}}
-					{{if eq .Type "heading"}}
-					<h2 class="public-block-heading">{{.Text}}</h2>
-					{{else if eq .Type "text"}}
-					<p class="public-block-text">{{.Text}}</p>
-					{{else if eq .Type "button"}}
-					<a class="btn btn-primary" href="{{.URL}}">{{.Text}}</a>
-					{{else}}
-						{{if .Text}}<p class="public-block-text">{{.Text}}</p>{{end}}
-					{{end}}
+				{{if eq .Type "hero"}}
+				<section class="public-hero-block">
+					{{if .Title}}<h2 class="public-block-heading">{{.Title}}</h2>{{end}}
+					{{if .Text}}<p class="public-block-lead">{{.Text}}</p>{{end}}
+					{{if .URL}}<a class="btn btn-primary" href="{{.URL}}">{{if .Label}}{{.Label}}{{else}}Voir{{end}}</a>{{end}}
+				</section>
+				{{else if eq .Type "heading"}}
+				<h2 class="public-block-heading">{{if .Title}}{{.Title}}{{else}}Titre{{end}}</h2>
+				{{else if eq .Type "text"}}
+				<p class="public-block-text">{{if .Text}}{{.Text}}{{else}}Ce paragraphe est vide.{{end}}</p>
+				{{else if eq .Type "image"}}
+				<figure class="public-block-image">
+					{{if .URL}}<img src="{{.URL}}" alt="{{if .Label}}{{.Label}}{{else}}Image{{end}}" loading="lazy">{{end}}
+					{{if .Caption}}<figcaption class="public-block-caption">{{.Caption}}</figcaption>{{end}}
+				</figure>
+				{{else if eq .Type "gallery"}}
+				<div class="public-block-gallery">
+					{{if .Title}}<h3 class="public-block-subheading">{{.Title}}</h3>{{end}}
+					{{if .Text}}<p class="public-block-text">{{.Text}}</p>{{end}}
+					<div class="public-gallery-grid">
+						{{range .Items}}
+						<figure class="public-gallery-item">
+							{{if .URL}}<img src="{{.URL}}" alt="{{if .Label}}{{.Label}}{{else}}Image{{end}}" loading="lazy">{{end}}
+							{{if .Caption}}<figcaption class="public-block-caption">{{.Caption}}</figcaption>{{end}}
+						</figure>
+						{{end}}
+					</div>
+				</div>
+				{{else if eq .Type "button"}}
+				<div class="public-block-button">
+					<a class="btn btn-primary" href="{{if .URL}}{{.URL}}{{else}}#{{end}}">{{if .Label}}{{.Label}}{{else}}Voir{{end}}</a>
+				</div>
+				{{else if eq .Type "links"}}
+				<div class="public-block-links">
+					{{if .Title}}<h3 class="public-block-subheading">{{.Title}}</h3>{{end}}
+					{{if .Text}}<p class="public-block-text">{{.Text}}</p>{{end}}
+					<ul class="public-links-list">
+						{{range .Items}}
+						<li><a class="public-link" href="{{if .URL}}{{.URL}}{{else}}#{{end}}">{{if .Label}}{{.Label}}{{else}}Lien{{end}}</a>{{if .Caption}} <span class="public-link-caption">({{.Caption}})</span>{{end}}</li>
+						{{end}}
+					</ul>
+				</div>
+				{{else}}
+				{{if .Text}}<p class="public-block-text">{{.Text}}</p>{{end}}
+				{{end}}
 				{{end}}
 			</div>
 			{{else}}
 			<p class="public-block-text">
-				Cette page est prête à accueillir votre contenu.
+				Cette page est prete a accueillir votre contenu.
 			</p>
 			{{end}}
 		</section>
 	</main>
 
 	<footer class="public-footer">
-		<span>Propulsé par OpenFolio</span>
+		<span>Propulse par OpenFolio</span>
 	</footer>
+
+	<script>
+		document.querySelector(".public-nav-toggle").addEventListener("click", () => {
+			document.querySelector(".public-nav-list").classList.toggle("public-nav-open");
+		});
+	</script>
 </body>
 </html>

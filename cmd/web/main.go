@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -65,6 +67,8 @@ func main() {
 	mux.Handle("GET /admin", s.requireAuth(http.HandlerFunc(s.handleAdmin)))
 	mux.Handle("POST /admin/pages", s.requireAuth(http.HandlerFunc(s.handleCreatePage)))
 	mux.Handle("GET /admin/pages/{id}/edit", s.requireAuth(http.HandlerFunc(s.handleEditPage)))
+	mux.Handle("POST /admin/pages/{id}/content", s.requireAuth(http.HandlerFunc(s.handleSavePageContent)))
+	mux.Handle("GET /admin/pages/{id}/preview", s.requireAuth(http.HandlerFunc(s.handlePreviewPage)))
 	mux.Handle("POST /admin/pages/{id}/update", s.requireAuth(http.HandlerFunc(s.handleUpdatePage)))
 	mux.Handle("POST /admin/pages/{id}/delete", s.requireAuth(http.HandlerFunc(s.handleDeletePage)))
 	mux.Handle("POST /admin/pages/{id}/home", s.requireAuth(http.HandlerFunc(s.handleSetHomePage)))
@@ -123,7 +127,7 @@ func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	home, err := database.GetHomePage(s.db)
 	if err == nil {
-		s.renderPublicPage(w, r, home)
+		s.renderPublicPage(w, r, home, false)
 		return
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -369,7 +373,83 @@ func (s *server) handleEditPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.render(w, r, "editor.html", map[string]any{"Email": email, "Page": page})
+	// page.Content contient deja un JSON valide ; on l'emet tel quel sans echappement HTML.
+	blocksJSON := template.JS(string(page.Content))
+
+	s.render(w, r, "editor.html", map[string]any{
+		"Email":      email,
+		"Page":       page,
+		"BlocksJSON": blocksJSON,
+	})
+}
+
+// handlePreviewPage affiche une page (même brouillon) dans le rendu public.
+func (s *server) handlePreviewPage(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.currentUser(r)
+	if !ok {
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		return
+	}
+	pageID := parsePageID(r.PathValue("id"))
+	if pageID == 0 {
+		http.Redirect(w, r, "/admin?error=notfound", http.StatusSeeOther)
+		return
+	}
+	page, err := database.GetPage(s.db, userID, pageID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Redirect(w, r, "/admin?error=notfound", http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+
+	s.renderPublicPage(w, r, page, true)
+}
+
+// handleSavePageContent enregistre les blocs JSON envoyés par le builder.
+func (s *server) handleSavePageContent(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := s.currentUser(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Session expirée. Reconnectez-vous."})
+		return
+	}
+	pageID := parsePageID(r.PathValue("id"))
+	if pageID == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Page introuvable."})
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 256*1024)
+	var payload struct {
+		Blocks []contentBlock `json:"blocks"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Contenu JSON invalide."})
+		return
+	}
+
+	blocks, err := normalizeBlocks(payload.Blocks)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	content, err := json.Marshal(blocks)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Erreur serveur."})
+		return
+	}
+	if err := database.UpdatePageContent(s.db, userID, pageID, content); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Page introuvable."})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Erreur serveur."})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "blocks": blocks})
 }
 
 // handleUpdatePage met a jour le titre, le slug et le statut d'une page.
@@ -478,10 +558,148 @@ func (s *server) handleToggleMaintenance(w http.ResponseWriter, r *http.Request)
 
 // contentBlock represente un bloc de contenu stocke en JSON dans une page.
 type contentBlock struct {
-	Type  string `json:"type"`
-	Title string `json:"title"`
-	Text  string `json:"text"`
-	URL   string `json:"url"`
+	Type    string        `json:"type"`
+	Title   string        `json:"title,omitempty"`
+	Text    string        `json:"text,omitempty"`
+	Label   string        `json:"label,omitempty"`
+	URL     string        `json:"url,omitempty"`
+	Caption string        `json:"caption,omitempty"`
+	Items   []contentItem `json:"items,omitempty"`
+}
+
+// contentItem represente un element d'une galerie ou d'une liste de liens.
+type contentItem struct {
+	Label   string `json:"label,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Caption string `json:"caption,omitempty"`
+}
+
+// publicNavItem represente un lien de navigation vers une page publiee.
+type publicNavItem struct {
+	Title  string
+	Href   string
+	Active bool
+}
+
+const (
+	maxBlocksPerPage = 100
+	maxBlockItems    = 24
+)
+
+var allowedBlockTypes = map[string]bool{
+	"hero":    true,
+	"heading": true,
+	"text":    true,
+	"image":   true,
+	"gallery": true,
+	"button":  true,
+	"links":   true,
+}
+
+// decodeBlocks lit le contenu JSON d'une page en tolerant les donnees invalides.
+func decodeBlocks(content []byte) []contentBlock {
+	if len(content) == 0 {
+		return nil
+	}
+	var blocks []contentBlock
+	if err := json.Unmarshal(content, &blocks); err != nil {
+		log.Printf("Contenu JSON invalide: %v", err)
+		return nil
+	}
+	return blocks
+}
+
+// normalizeBlocks nettoie et valide les blocs envoyes par le builder.
+func normalizeBlocks(blocks []contentBlock) ([]contentBlock, error) {
+	if len(blocks) > maxBlocksPerPage {
+		return nil, fmt.Errorf("trop de blocs (maximum %d)", maxBlocksPerPage)
+	}
+
+	out := make([]contentBlock, 0, len(blocks))
+	for i, block := range blocks {
+		block.Type = strings.ToLower(strings.TrimSpace(block.Type))
+		if !allowedBlockTypes[block.Type] {
+			return nil, fmt.Errorf("type de bloc inconnu pour le bloc %d", i+1)
+		}
+		block.Title = truncateText(strings.TrimSpace(block.Title), 200)
+		block.Text = truncateText(strings.TrimSpace(block.Text), 8000)
+		block.Label = truncateText(strings.TrimSpace(block.Label), 120)
+		block.URL = sanitizeURL(block.URL)
+		block.Caption = truncateText(strings.TrimSpace(block.Caption), 300)
+
+		if len(block.Items) > maxBlockItems {
+			return nil, fmt.Errorf("trop d'éléments dans le bloc %d (maximum %d)", i+1, maxBlockItems)
+		}
+		items := make([]contentItem, 0, len(block.Items))
+		for _, item := range block.Items {
+			item.Label = truncateText(strings.TrimSpace(item.Label), 120)
+			item.URL = sanitizeURL(item.URL)
+			item.Caption = truncateText(strings.TrimSpace(item.Caption), 300)
+			if item.Label == "" && item.URL == "" && item.Caption == "" {
+				continue
+			}
+			items = append(items, item)
+		}
+		block.Items = items
+		out = append(out, block)
+	}
+	return out, nil
+}
+
+// sanitizeURL conserve uniquement les liens surs (relatifs ou schemas autorises).
+func sanitizeURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	raw = truncateText(raw, 2048)
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "", "http", "https", "mailto", "tel":
+		return raw
+	default:
+		return ""
+	}
+}
+
+// truncateText limite une chaine en nombre de caracteres.
+func truncateText(value string, max int) string {
+	runes := []rune(value)
+	if max <= 0 || len(runes) <= max {
+		return value
+	}
+	return string(runes[:max]) + "…"
+}
+
+// buildPageDescription construit une description SEO a partir des blocs.
+func buildPageDescription(page database.Page, blocks []contentBlock) string {
+	for _, block := range blocks {
+		candidate := strings.TrimSpace(block.Text)
+		if candidate == "" {
+			candidate = strings.TrimSpace(block.Title)
+		}
+		if candidate == "" {
+			candidate = strings.TrimSpace(block.Caption)
+		}
+		if candidate == "" {
+			continue
+		}
+		candidate = strings.Join(strings.Fields(candidate), " ")
+		return truncateText(candidate, 155)
+	}
+	return truncateText(page.Title+" — Portfolio personnel.", 155)
+}
+
+// writeJSON ecrit une reponse JSON avec le statut HTTP indique.
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("Erreur encodage JSON: %v", err)
+	}
 }
 
 // handlePublicPage rend publiquement une page publiee via son slug.
@@ -508,20 +726,44 @@ func (s *server) handlePublicPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderPublicPage(w, r, page)
+	s.renderPublicPage(w, r, page, false)
 }
 
-// renderPublicPage affiche une page publique avec ses blocs JSON.
-func (s *server) renderPublicPage(w http.ResponseWriter, r *http.Request, page database.Page) {
-	var blocks []contentBlock
-	if len(page.Content) > 0 {
-		if err := json.Unmarshal(page.Content, &blocks); err != nil {
-			log.Printf("Contenu JSON invalide pour la page %s: %v", page.Slug, err)
-			blocks = nil
-		}
+// renderPublicPage affiche une page publique (ou son apercu) avec ses blocs JSON.
+func (s *server) renderPublicPage(w http.ResponseWriter, r *http.Request, page database.Page, preview bool) {
+	blocks := decodeBlocks(page.Content)
+
+	navPages, err := database.ListPublishedPages(s.db, page.UserID)
+	if err != nil {
+		log.Printf("Erreur navigation publique: %v", err)
+		navPages = nil
+	}
+	homeID, err := database.GetHomePageID(s.db)
+	if err != nil {
+		log.Printf("Erreur lecture page d'accueil: %v", err)
+		homeID = 0
 	}
 
-	s.render(w, r, "public.html", map[string]any{"Page": page, "Blocks": blocks})
+	nav := make([]publicNavItem, 0, len(navPages))
+	for _, navPage := range navPages {
+		href := "/" + navPage.Slug
+		if navPage.ID == homeID {
+			href = "/"
+		}
+		nav = append(nav, publicNavItem{
+			Title:  navPage.Title,
+			Href:   href,
+			Active: navPage.ID == page.ID,
+		})
+	}
+
+	s.render(w, r, "public.html", map[string]any{
+		"Page":        page,
+		"Blocks":      blocks,
+		"NavPages":    nav,
+		"Preview":     preview,
+		"Description": buildPageDescription(page, blocks),
+	})
 }
 
 // handleSetHomePage définit la page servie sur la route "/".
