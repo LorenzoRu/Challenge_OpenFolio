@@ -31,3 +31,5 @@ L'idée de ce challenge vient d'un besoin de refaire un portfolio. Mon besoin é
 ## 6 : Mon retour
 
 4h, c'est vraiment court ! Le résultat est fonctionnel sur pratiquement la totalité du cahier des charges. Il manque toutefois une partie importante concernant l'interaction. Le design est propre, mais on sent le côté « effet template » apporté par une IA que je n'estime pas avoir assez cadrée pour la réalisation.
+
+## 🎥 Une vidéo condensée est en cours de préparation
